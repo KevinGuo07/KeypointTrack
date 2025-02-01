@@ -1,0 +1,14 @@
+device: &device 'cuda'
+seed: &seed 0
+
+keypoint_proposer:
+
+  bounds_min: [ -1.2, -1.2, -1.2 ] # [0.0, 0.0, 0.0]
+  bounds_max: [ 1.95, 1.95, 1.95 ]
+  # bounds_min: [ -0.45, -0.75, 0.698 ]
+  # bounds_max: [ 0.10, 0.60, 1.2 ]
+  num_candidates_per_mask: 5
+  min_dist_bt_keypoints: 0.06
+  max_mask_ratio: 0.5
+  device: *device
+  seed: *seed

@@ -1,0 +1,15 @@
+torch~=2.5.1+cu118
+numpy~=2.2.1
+opencv-python~=4.10.0.84
+matplotlib~=3.10.0
+tqdm~=4.67.1
+PyYAML~=6.0.2
+utils~=1.0.2
+scipy~=1.15.1
+scikit-learn~=1.6.1
+open3d~=0.19.0
+setuptools~=65.5.1
+torchvision~=0.20.1
+pillow~=11.1.0
+cotracker~=3.0
+numba~=0.60.0
