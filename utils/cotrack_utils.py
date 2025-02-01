@@ -1,16 +1,18 @@
 import json
 import math
-import numpy as np
-import torch
-import yaml
-from tqdm import tqdm
-from utils.keypoint_utils import KeypointProposer
-from utils.preprocess import load_image, load_pointcloud, load_mask, save_image
 import os
 import re
-import torch.nn.functional as F
+
 import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import torch.nn.functional as F
+import yaml
 from scipy.ndimage import uniform_filter1d
+from tqdm import tqdm
+
+from utils.keypoint_utils import KeypointProposer
+from utils.preprocess import load_image, load_pointcloud, load_mask, save_image
 
 
 def sort_files_by_number(directory, prefix):
@@ -31,7 +33,7 @@ def get_config(config_path=None):
         return yaml.load(f, Loader=yaml.FullLoader)
 
 
-def obj_dict_generate(all_json_save_path):
+def obj_dict_generate(all_json_save_path, base_path):
     """生成包含所有帧信息的字典"""
     if not os.path.exists(all_json_save_path):
         raise FileNotFoundError(f"JSON file not found: {all_json_save_path}")
@@ -42,7 +44,6 @@ def obj_dict_generate(all_json_save_path):
     obs_dicts = {}
     for step_idx_str in tqdm(sorted(data.keys(), key=lambda x: int(x))):
         guid_data = data[step_idx_str]
-        base_path = "C:/Users/11760/Desktop/dissertation/keguide/"
 
         paths = {
             "rgb": os.path.join(base_path, guid_data["rgb_image_npy"]),
@@ -176,14 +177,12 @@ class KeypointTracker:
             queries=query
         )
 
-    def keypoint_track(self, image_seq_dir, mask_seq_dir, info_dir, point_seq_dir, output_dir):
-
-        image_files = sort_files_by_number(image_seq_dir, prefix="rgb_")
-        mask_files = sort_files_by_number(mask_seq_dir, prefix="actor_seg_")
-
-        obj_dicts_sorted = obj_dict_generate(info_dir)
-        generate_point_clouds(obj_dicts_sorted, point_seq_dir)
-        point_files = sort_files_by_number(point_seq_dir, prefix="point_")
+    def keypoint_track(self, dirs, base_path):
+        image_files = sort_files_by_number(dirs["image"], prefix="rgb_")
+        mask_files = sort_files_by_number(dirs["mask"], prefix="actor_seg_")
+        obj_dicts_sorted = obj_dict_generate(dirs["info"], base_path)
+        generate_point_clouds(obj_dicts_sorted, dirs["pointcloud"])
+        point_files = sort_files_by_number(dirs["pointcloud"], prefix="point_")
 
         assert len(image_files) == len(point_files) == len(mask_files), "序列文件数量不一致！"
 
@@ -192,15 +191,15 @@ class KeypointTracker:
         window_frames = []
 
         for i, (img_file, point_file, mask_file) in enumerate(zip(image_files, point_files, mask_files)):
-            image = load_image(os.path.join(image_seq_dir, img_file))
-            points = load_pointcloud(os.path.join(point_seq_dir, point_file))
-            mask = load_mask(os.path.join(mask_seq_dir, mask_file))
+            image = load_image(os.path.join(dirs["image"], img_file))
+            points = load_pointcloud(os.path.join(dirs["pointcloud"], point_file))
+            mask = load_mask(os.path.join(dirs["mask"], mask_file))
 
             H, W, _ = image.shape
 
             if i == 0:
                 keypoints, keypoint_info, candidate_pixels, features_flat = self.initialize_keypoint(image, points,
-                                                                                                     mask, output_dir)
+                                                                                                     mask, dirs["output"])
                 reference_features = get_reference_features(keypoint_info, features_flat, H, W)
                 queries = self._initialize_queries(keypoints)
                 window_frames.append(image)

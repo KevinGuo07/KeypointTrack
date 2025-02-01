@@ -1,11 +1,13 @@
-import torch
+import argparse
 import os
 import re
-import argparse
-from utils.preprocess import load_image
-from utils.video_utils import create_video_from_images
+
+import torch
+
 from cotracker.predictor import CoTrackerOnlinePredictor
 from utils.cotrack_utils import KeypointTracker, save_and_show_keypoints
+from utils.preprocess import load_image
+from utils.video_utils import create_video_from_images
 
 DEFAULT_DEVICE = (
     "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
@@ -32,7 +34,7 @@ def main():
 
     parser.add_argument(
         "--base_dir",
-        default="C:/Users/11760/Desktop/dissertation/keguide/block_pick_hard",
+        default="C:/Users/11760/Desktop/dissertation/KeypointTrack/block_pick_hard", # path to your file path
         help="Base directory for input and output data",
     )
 
@@ -55,7 +57,9 @@ def main():
     model = model.to(DEFAULT_DEVICE)
 
     tracker = KeypointTracker(model=model)
-    tracked_keypoints = tracker.keypoint_track(dirs["image"], dirs["mask"], dirs["info"], dirs["pointcloud"], dirs["output"])
+
+    project_path = os.path.dirname(args.base_dir)
+    tracked_keypoints = tracker.keypoint_track(dirs, project_path)
     image_files = sort_files_by_number(dirs["image"], "rgb_")
 
     for i, (keypoints, keypoint_info) in enumerate(tracked_keypoints):
