@@ -254,6 +254,7 @@ class KeypointProposer:
 
             updated_keypoints.append(updated_position)
             keypoint_info.append({
+                "frame": 0,
                 "object_id": object_id,
                 "pixel_coords": pixel_coords
             })
