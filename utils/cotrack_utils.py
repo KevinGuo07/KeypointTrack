@@ -170,7 +170,6 @@ class KeypointTracker:
         assert len(image_files) == len(point_files) == len(mask_files), "序列文件数量不一致！"
 
         tracked_keypoints = []
-        keypoint_info = []
         window_frames = []
 
         for i, (img_file, point_file, mask_file) in enumerate(zip(image_files, point_files, mask_files)):
@@ -185,7 +184,6 @@ class KeypointTracker:
                                                                                                      mask,
                                                                                                      dirs["output"])
                 queries = self._initialize_queries(keypoints)
-
                 tracked_keypoints.append((keypoints, keypoint_info))
             else:
                 if i % self.model.step == 0 and i != 0:
@@ -193,16 +191,17 @@ class KeypointTracker:
                     # print(keypoints)
                     keypoints_batch, keypoint_info_batch = self.cotrack_keypoints(image, keypoints, i, queries, window_frames,
                                                                       keypoint_info)
-                    print(f"keypoint_info_batch sample: {keypoint_info_batch}")
+                    # print(f"keypoint_info_batch sample: {keypoint_info_batch}")
                     for j in range(i - self.model.step, i):
-                        frame_info = []
+                        frame_info = [info for info in keypoint_info_batch if info["frame"] == j]
 
-                        # 筛选出 `keypoint_info_batch` 里 `frame == j` 的数据
-                        for info in keypoint_info_batch:
-                            if info["frame"] == j:
-                                frame_info.append(info)
+                        frame_indices = [
+                            info["frame"] - (i - self.model.step)
+                            for info in keypoint_info_batch
+                            if isinstance(info, dict) and "frame" in info and (i - self.model.step) <= info["frame"] < i
+                            and (info["frame"] - (i - self.model.step)) < keypoints_batch.shape[0]
+                        ]
 
-                        frame_indices = [idx for idx, info in enumerate(keypoint_info_batch) if info["frame"] == j]
                         frame_keypoints = keypoints_batch[frame_indices] if frame_indices else None
 
                         if frame_keypoints is not None:
@@ -211,9 +210,8 @@ class KeypointTracker:
                     # queries = self._initialize_queries(keypoints)
                     print(f"keypoints of input {i} and former 8 frames are tracked! Last image path is {img_file}")
             window_frames.append(image)
-
+        tracked_keypoints.pop(0)
                     # print(f"window_frames size: {len(window_frames)}")
-
         return tracked_keypoints
 
     def initialize_keypoint(self, image, points, mask, output_dir=None):
@@ -341,8 +339,8 @@ class KeypointTracker:
             keypoints_tensor = keypoints_tensor[:, :3]
             for i in range(keypoints_tensor.shape[0]):  # 遍历 N 个关键点
                 keypoint_info.append({
-                    "frame": 1,  # 存储真实的帧索引 T-8:T
-                    "object_id": i,  # 需要修改
+                    "frame": 8,
+                    "object_id": i,
                     "pixel_coords": (keypoints_tensor[i, 0].item(), keypoints_tensor[i, 1].item())
                 })
 
