@@ -349,7 +349,6 @@ class CoTrackerThreeOnline(CoTrackerThreeBase):
             else:
                 # Pad online predictions with zeros for the current window
                 pad = min(step, T - step)
-                print(pad)
                 coords_predicted = F.pad(
                     self.online_coords_predicted, (0, 0, 0, 0, 0, pad), "constant"
                 )

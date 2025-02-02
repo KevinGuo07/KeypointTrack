@@ -1,7 +1,7 @@
 import argparse
 import os
 import re
-
+import numpy as np
 import torch
 
 from cotracker.predictor import CoTrackerOnlinePredictor
@@ -34,7 +34,7 @@ def main():
 
     parser.add_argument(
         "--base_dir",
-        default="C:/Users/11760/Desktop/dissertation/KeypointTrack/block_pick_hard", # path to your file path
+        default="C:/Users/11760/Desktop/dissertation/KeypointTrack/dual_shoes_place", # path to your file path
         help="Base directory for input and output data",
     )
 
@@ -60,9 +60,12 @@ def main():
 
     project_path = os.path.dirname(args.base_dir)
     tracked_keypoints = tracker.keypoint_track(dirs, project_path)
+
     image_files = sort_files_by_number(dirs["image"], "rgb_")
 
     for i, (keypoints, keypoint_info) in enumerate(tracked_keypoints):
+        print(f"image time:{i}")
+        # print(keypoint_info)
         image_path = os.path.join(dirs["image"], image_files[i])
         image = load_image(image_path)
         print(f"Processing image file: {os.path.basename(image_path)}")

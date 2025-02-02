@@ -91,7 +91,7 @@ def save_and_show_keypoints(image, keypoint_info, image_path, output_dir, index)
         plt.scatter(pixel_coords[0], pixel_coords[1], s=50, edgecolors='white', color=color,
                     label=f"bottle_id: {obj_id}")
 
-    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5), title=os.path.basename(image_path))
+    # plt.legend(loc='center left', bbox_to_anchor=(1, 0.5), title=os.path.basename(image_path))
     plt.axis('off')
 
     output_path = os.path.join(output_dir, f"keypoints_{index}.jpg")
@@ -133,23 +133,6 @@ def generate_point_clouds(obj_dicts, point_seq_dir):
             get_point_cloud(obs_dict, point_seq_dir)
         except Exception as e:
             print(f"Error processing frame {frame_id}: {e}")
-
-
-def get_reference_features(keypoint_info, features_flat, H, W):
-    reference_features_list = []
-    # print(keypoint_info)
-    for info in keypoint_info:
-        if info["pixel_coords"] is None:
-            ref_feat = torch.full_like(features_flat[0], float('nan'))
-        else:
-            col, row = info["pixel_coords"]
-            idx = row * W + col
-            ref_feat = features_flat[idx]  # shape: (D,)
-
-        reference_features_list.append(ref_feat)
-
-    reference_features = torch.stack(reference_features_list, dim=0)
-    return reference_features
 
 
 class KeypointTracker:
@@ -199,21 +182,37 @@ class KeypointTracker:
 
             if i == 0:
                 keypoints, keypoint_info, candidate_pixels, features_flat = self.initialize_keypoint(image, points,
-                                                                                                     mask, dirs["output"])
+                                                                                                     mask,
+                                                                                                     dirs["output"])
                 queries = self._initialize_queries(keypoints)
-                window_frames.append(image)
+
+                tracked_keypoints.append((keypoints, keypoint_info))
             else:
                 if i % self.model.step == 0 and i != 0:
-                    print(f"iteration time:",i)
-                    print(keypoints.dtype)
-                    keypoints, keypoint_info = self.cotrack_keypoints(image, keypoints, i, queries, window_frames, keypoint_info)
-                    # 测试下面的更新是否有必要
-                    queries = self._initialize_queries(keypoints)
-                    print(f"keypoints of input {i} is tracked! image path is {img_file}")
-                else:
-                    window_frames.append(image)
+                    print(f"iteration time:{i} 的关键点信息为：")
+                    # print(keypoints)
+                    keypoints_batch, keypoint_info_batch = self.cotrack_keypoints(image, keypoints, i, queries, window_frames,
+                                                                      keypoint_info)
+                    print(f"keypoint_info_batch sample: {keypoint_info_batch}")
+                    for j in range(i - self.model.step, i):
+                        frame_info = []
 
-            tracked_keypoints.append((keypoints, keypoint_info))
+                        # 筛选出 `keypoint_info_batch` 里 `frame == j` 的数据
+                        for info in keypoint_info_batch:
+                            if info["frame"] == j:
+                                frame_info.append(info)
+
+                        frame_indices = [idx for idx, info in enumerate(keypoint_info_batch) if info["frame"] == j]
+                        frame_keypoints = keypoints_batch[frame_indices] if frame_indices else None
+
+                        if frame_keypoints is not None:
+                            tracked_keypoints.append((frame_keypoints, frame_info))
+                    # 测试下面的更新是否有必要
+                    # queries = self._initialize_queries(keypoints)
+                    print(f"keypoints of input {i} and former 8 frames are tracked! Last image path is {img_file}")
+            window_frames.append(image)
+
+                    # print(f"window_frames size: {len(window_frames)}")
 
         return tracked_keypoints
 
@@ -230,7 +229,7 @@ class KeypointTracker:
         return real_keypoints, keypoint_info, candidate_pixels, features_flat
 
     # 此时可以拿到的输入有：上一帧的参考点坐标和对应的特征信息，当前帧的rgb、点云、mask
-    # 考虑加入的输入：之前所有帧的track
+    # 考虑加入的输入：
     def cotrack_keypoints(self, image, keypoint, iteration, queries, window_frames, keypoint_info):
         """
         Args:
@@ -245,8 +244,7 @@ class KeypointTracker:
         # 调整输入图片格式，对应video_chunk
         queries = queries.to(self.device)
         if iteration == self.model.step:
-            # debug: queries格式没问题
-
+            # debug: queries格式没问题,内容呢
             # print(f"query {iteration}: type={type(queries)}, shape= {queries.shape}, {queries}, dtype={queries.dtype}")
 
             # debug: tracks格式没问题
@@ -256,9 +254,11 @@ class KeypointTracker:
                 query=queries,
                 grid_query_frame=0,
             )
+            # print(f"Frame {iteration}: keypoints_tensor：")
+            # print(tracks) first iteration is NoneType
             window_frames.append(image)
             keypoints_tensor = self._process_tracks(tracks, vis, keypoint, keypoint_info)
-            print(f"Frame {iteration}: type={type(tracks)}")  # ,shape={tracks.shape}, dtype={tracks.dtype}
+
         else:
             tracks, vis = self._process_step(
                 window_frames,
@@ -266,11 +266,12 @@ class KeypointTracker:
                 query=queries,
                 grid_query_frame=0,  # 检查是否可以不要
             )
+            # 在这里打印tracks得到iteration个15*2的tensor数组，16个每个不一样
+            print(f"Frame {iteration}: tracks shape：{tracks.shape}")
             window_frames.append(image)
             keypoints_tensor = self._process_tracks(tracks, vis, keypoint, keypoint_info)
-            print(f"Frame {iteration}: type={type(tracks)}, shape={tracks.shape}, dtype={tracks.dtype}")
-        # to be solved: z坐标值的更新
-        # keypoints_tensor = self._process_tracks(tracks, vis, keypoint, keypoint_info)
+            # 在这里在这里打印keypoints_tensor得到15*3的numpy数组，每次都一样，说明_process_tracks有问题，且没有保留window_length每一帧的track值
+            # to be solved: z坐标值的更新,id的更新
 
         return keypoints_tensor, keypoint_info
 
@@ -284,47 +285,66 @@ class KeypointTracker:
         keypoints_2d = keypoint[:, :2]  # 提取 x, y 坐标
         N = len(keypoints_2d)
         frame_indices = torch.zeros((N, 1), dtype=torch.float32)  # 每个点对应的帧索引，全为 0
-        print(keypoints_2d.dtype)
+        # print(keypoints_2d.dtype)
         keypoints_xy = torch.from_numpy(keypoints_2d).float()  # 转为张量
         queries = torch.cat([frame_indices, keypoints_xy], dim=1).unsqueeze(0)  # 拼接为 (1, N, 3)
         return queries
 
     def _process_tracks(self, tracks, vis, keypoint, keypoint_info):
         """
+        处理 CoTracker 的跟踪结果，返回最近 8 帧的关键点坐标，并存储对应时间帧索引。
+
         Args:
-            tracks (torch.Tensor or None): 跟踪结果，形状为 (1, T, N, 2)。
-            vis (torch.Tensor): 可见性掩码，形状为 (1, T, N)。
-            keypoint (np.ndarray): 初始关键点，形状为 (N, 3)。
+            tracks (torch.Tensor): (1, T, N, 2)，包含所有帧的跟踪坐标。
+            vis (torch.Tensor): 可见性掩码，(1, T, N)。
+            keypoint (np.ndarray or torch.Tensor): 初始关键点 (N, 3), 这里只用于取第三维作为Z来满足数据格式需要，后续需要修改
             keypoint_info (list): 存储关键点位置信息的列表。
+
         Returns:
-            keypoints_tensor (torch.Tensor): 当前帧的关键点坐标，形状为 (N, 3)。
+            keypoints_numpy (np.ndarray): (8, N, 3)，包含最近 8 帧的 (x, y, z) 坐标。
         """
         if tracks is not None:
-            coords = tracks[0, 0]  # 提取当前帧的关键点坐标 (N, 2)
-            visible_mask = vis[0, 0].cpu().numpy()  # 提取可见性掩码 (N,)
-            keypoint_z = keypoint[:, 2:3]  # 提取 z 坐标，形状为 (N, 1)
+            T = tracks.shape[1]
+            start_frame = max(0, T - 8)  # 计算起始帧索引，防止越界
+            frame_indices = list(range(start_frame, T))  # T-8:T 的帧索引
 
-            # 确保 keypoint_z 是 Tensor 且与 coords 在同一设备上
-            keypoint_z_tensor = torch.from_numpy(keypoint_z).to(coords.device)
+            # 提取最近 8 帧的 (N, 2) 关键点坐标
+            coords = tracks[:, -8:]  # (1, 8, N, 2)
+            coords = coords.squeeze(0)  # (8, N, 2)
 
-            keypoints_tensor = torch.cat([coords, keypoint_z_tensor], dim=1)  # (N, 3)
+            if isinstance(keypoint, np.ndarray):
+                keypoint_z = torch.from_numpy(keypoint[:, 2:3]).to(coords.device)  # (N, 1)
+            else:
+                keypoint_z = keypoint[:, 2:3].to(coords.device)  # (N, 1)
 
-            for i, coord in enumerate(coords):
-                keypoint_info.append({
-                    "object_id": i,
-                    "pixel_coords": (coord[0].item(), coord[1].item())
-                })
-            keypoints_numpy = keypoints_tensor.cpu().numpy().astype(np.float16)
+            # 复制 keypoint_z 使其与 coords 匹配
+            keypoint_z = keypoint_z.view(1, -1, 1).expand(8, -1, -1)  # (8, N, 1)
+            if keypoint_z.shape[1] != coords.shape[1]:
+                keypoint_z = keypoint_z[:, :coords.shape[1], :]
+            keypoints_tensor = torch.cat([coords, keypoint_z], dim=2)  # (8, N, 3)
+
+            for t_idx, t in enumerate(frame_indices):  # 遍历实际时间帧索引
+                for i in range(keypoints_tensor.shape[1]):  # 遍历 N 个关键点
+                    keypoint_info.append({
+                        "frame": t,  # 存储真实的帧索引 T-8:T
+                        "object_id": i,  # 需要修改
+                        "pixel_coords": (keypoints_tensor[t_idx, i, 0].item(), keypoints_tensor[t_idx, i, 1].item())
+                    })
+
         else:
-            # 如果 tracks 为 None，使用初始关键点作为 fallback
-            keypoints_tensor = torch.from_numpy(keypoint).float().to(self.device)
-            keypoints_tensor = keypoints_tensor[:, :3]  # 只保留 (x, y, z)
+            # tracks为空则返回原始关键点
+            if isinstance(keypoint, np.ndarray):
+                keypoints_tensor = torch.from_numpy(keypoint).float().to(self.device)
+            else:
+                keypoints_tensor = keypoint.float().to(self.device)
 
-            for i, coord in enumerate(keypoints_tensor):
+            keypoints_tensor = keypoints_tensor[:, :3]
+            for i in range(keypoints_tensor.shape[0]):  # 遍历 N 个关键点
                 keypoint_info.append({
-                    "object_id": i,
-                    "pixel_coords": (coord[0].item(), coord[1].item())
+                    "frame": 1,  # 存储真实的帧索引 T-8:T
+                    "object_id": i,  # 需要修改
+                    "pixel_coords": (keypoints_tensor[i, 0].item(), keypoints_tensor[i, 1].item())
                 })
-            keypoints_numpy = keypoints_tensor.cpu().numpy().astype(np.float16)
 
+        keypoints_numpy = keypoints_tensor.cpu().numpy()  # (8, N, 3)
         return keypoints_numpy
