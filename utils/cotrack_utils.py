@@ -191,7 +191,6 @@ class KeypointTracker:
                     # print(keypoints)
                     keypoints_batch, keypoint_info_batch = self.cotrack_keypoints(image, keypoints, i, queries, window_frames,
                                                                       keypoint_info)
-                    # print(f"keypoint_info_batch sample: {keypoint_info_batch}")
                     for j in range(i - self.model.step, i):
                         frame_info = [info for info in keypoint_info_batch if info["frame"] == j]
 
@@ -211,7 +210,6 @@ class KeypointTracker:
                     print(f"keypoints of input {i} and former 8 frames are tracked! Last image path is {img_file}")
             window_frames.append(image)
         tracked_keypoints.pop(0)
-                    # print(f"window_frames size: {len(window_frames)}")
         return tracked_keypoints
 
     def initialize_keypoint(self, image, points, mask, output_dir=None):
