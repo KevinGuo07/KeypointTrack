@@ -61,12 +61,11 @@ def main():
     project_path = os.path.dirname(args.base_dir)
     task_path = args.base_dir
     tracked_keypoints = tracker.keypoint_track(dirs, project_path, task_path)
+    # print(keypoint_info)
     image_files = sort_files_by_number(dirs["image"], "rgb_")
     for i, (keypoints, keypoint_info) in enumerate(tracked_keypoints):
         print(f"image time:{i}")
-        if i==1:
-            print(keypoint_info)
-        image_path = os.path.join(dirs["image"], image_files[i])
+        image_path = os.path.join(dirs["image"], image_files[i+1])
         image = load_image(image_path)
         print(f"Processing image file: {os.path.basename(image_path)}")
         save_and_show_keypoints(image, keypoint_info, image_path, dirs["output"], i)
