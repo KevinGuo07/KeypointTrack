@@ -57,7 +57,7 @@ class KeypointProposer:
 
         # print(f"candidate_pixels shape before exclude: {candidate_pixels.shape}")
         # print(f"candidate_pixels: {candidate_pixels}")
-        # exclude keypoints that are outside of the workspace
+        # exclude keypoints that are outside the workspace
 
         within_space = filter_points_by_bounds(candidate_keypoints, self.bounds_min, self.bounds_max, strict=True)
         candidate_keypoints = candidate_keypoints[within_space]

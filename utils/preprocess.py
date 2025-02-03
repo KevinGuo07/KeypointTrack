@@ -55,12 +55,10 @@ def load_mask(filepath):
         mask = np.load(filepath)
         if mask.ndim != 2:
             raise ValueError(f"掩码文件格式错误：{filepath}")
-        mask_flattened = mask#.flatten()
+        mask_flattened = mask  # .flatten()
         return mask_flattened
     except Exception as e:
         raise ValueError(f"无法加载掩码文件：{filepath}, 错误：{e}")
-
-
 
 
 def save_image(image, filepath):
@@ -69,5 +67,8 @@ def save_image(image, filepath):
         image (np.ndarray): 待保存的 RGB 图像，形状为 (H, W, 3)。
         filepath (str): 保存图像的路径。
     """
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
     image_bgr = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-    cv2.imwrite(filepath, image_bgr)
+    success = cv2.imwrite(filepath, image_bgr)
+    if not success:
+        print(f"保存图片失败：{filepath}")

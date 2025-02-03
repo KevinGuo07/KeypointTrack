@@ -3,6 +3,7 @@ import math
 import os
 import re
 
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -160,7 +161,7 @@ class KeypointTracker:
             queries=query
         )
 
-    def keypoint_track(self, dirs, base_path):
+    def keypoint_track(self, dirs, base_path, task_path):
         image_files = sort_files_by_number(dirs["image"], prefix="rgb_")
         mask_files = sort_files_by_number(dirs["mask"], prefix="actor_seg_")
         obj_dicts_sorted = obj_dict_generate(dirs["info"], base_path)
@@ -180,17 +181,17 @@ class KeypointTracker:
             H, W, _ = image.shape
 
             if i == 0:
-                keypoints, keypoint_info, candidate_pixels, features_flat = self.initialize_keypoint(image, points,
+                keypoints, keypoint_info, keypoints_points, features_flat = self.initialize_keypoint(image, points,
                                                                                                      mask,
-                                                                                                     dirs["output"])
-                queries = self._initialize_queries(keypoints)
+                                                                                                     task_path)
+                queries = self._initialize_queries(keypoints, H, W)
                 tracked_keypoints.append((keypoints, keypoint_info))
             else:
                 if i % self.model.step == 0 and i != 0:
                     print(f"iteration time:{i} 的关键点信息为：")
                     # print(keypoints)
-                    keypoints_batch, keypoint_info_batch = self.cotrack_keypoints(image, keypoints, i, queries, window_frames,
-                                                                      keypoint_info)
+                    keypoints_batch, keypoint_info_batch = self.cotrack_keypoints(image, keypoints, i, queries,
+                                                                                  window_frames, keypoint_info)
                     for j in range(i - self.model.step, i):
                         frame_info = [info for info in keypoint_info_batch if info["frame"] == j]
 
@@ -212,17 +213,17 @@ class KeypointTracker:
         tracked_keypoints.pop(0)
         return tracked_keypoints
 
-    def initialize_keypoint(self, image, points, mask, output_dir=None):
+    def initialize_keypoint(self, image, points, mask, task_path=None):
         keypoints, projected_img, candidate_pixels, features_flat = self.keypoint_proposer.get_keypoints(image, points,
                                                                                                          mask)
         real_keypoints, keypoint_info = self.keypoint_proposer.register_keypoints(keypoints, points, mask)
 
-        if output_dir:
-            save_image(projected_img, os.path.join(output_dir, "initial/projected_keypoints.jpg"))
-
+        if task_path:
+            save_image(projected_img, os.path.join(task_path, "projected_keypoints.jpg"))
         print("keypoint of first input image is initialized!")
+        print(candidate_pixels)
         print("shape of image is:", image.shape, "shape of points is:", points.shape, "shape of mask is:", mask.shape)
-        return real_keypoints, keypoint_info, candidate_pixels, features_flat
+        return candidate_pixels, keypoint_info, real_keypoints, features_flat
 
     # 此时可以拿到的输入有：上一帧的参考点坐标和对应的特征信息，当前帧的rgb、点云、mask
     # 考虑加入的输入：
@@ -262,7 +263,6 @@ class KeypointTracker:
                 query=queries,
                 grid_query_frame=0,  # 检查是否可以不要
             )
-            # 在这里打印tracks得到iteration个15*2的tensor数组，16个每个不一样
             print(f"Frame {iteration}: tracks shape：{tracks.shape}")
             window_frames.append(image)
             keypoints_tensor = self._process_tracks(tracks, vis, keypoint, keypoint_info)
@@ -271,19 +271,17 @@ class KeypointTracker:
 
         return keypoints_tensor, keypoint_info
 
-    def _initialize_queries(self, keypoint):
+    def _initialize_queries(self, keypoint, H, W):
         """
         Args:
-            keypoint (np.ndarray): 初始关键点，形状为 (N, 3)。
+            keypoint (np.ndarray): 初始关键点，形状为 (N, 2)。
         Returns:
             queries (torch.Tensor): 查询点张量，形状为 (1, N, 3)。
         """
-        keypoints_2d = keypoint[:, :2]  # 提取 x, y 坐标
-        N = len(keypoints_2d)
+        N = len(keypoint)
         frame_indices = torch.zeros((N, 1), dtype=torch.float32)  # 每个点对应的帧索引，全为 0
-        # print(keypoints_2d.dtype)
-        keypoints_xy = torch.from_numpy(keypoints_2d).float()  # 转为张量
-        queries = torch.cat([frame_indices, keypoints_xy], dim=1).unsqueeze(0)  # 拼接为 (1, N, 3)
+        keypoints_xy = torch.from_numpy(keypoint[:, ::-1].copy()).float()
+        queries = torch.cat([frame_indices, keypoints_xy], dim=1).unsqueeze(0)  # (1, N, 3)
         return queries
 
     def _process_tracks(self, tracks, vis, keypoint, keypoint_info):
@@ -308,16 +306,7 @@ class KeypointTracker:
             coords = tracks[:, -8:]  # (1, 8, N, 2)
             coords = coords.squeeze(0)  # (8, N, 2)
 
-            if isinstance(keypoint, np.ndarray):
-                keypoint_z = torch.from_numpy(keypoint[:, 2:3]).to(coords.device)  # (N, 1)
-            else:
-                keypoint_z = keypoint[:, 2:3].to(coords.device)  # (N, 1)
-
-            # 复制 keypoint_z 使其与 coords 匹配
-            keypoint_z = keypoint_z.view(1, -1, 1).expand(8, -1, -1)  # (8, N, 1)
-            if keypoint_z.shape[1] != coords.shape[1]:
-                keypoint_z = keypoint_z[:, :coords.shape[1], :]
-            keypoints_tensor = torch.cat([coords, keypoint_z], dim=2)  # (8, N, 3)
+            keypoints_tensor = coords
 
             for t_idx, t in enumerate(frame_indices):  # 遍历实际时间帧索引
                 for i in range(keypoints_tensor.shape[1]):  # 遍历 N 个关键点
@@ -334,8 +323,8 @@ class KeypointTracker:
             else:
                 keypoints_tensor = keypoint.float().to(self.device)
 
-            keypoints_tensor = keypoints_tensor[:, :3]
-            for i in range(keypoints_tensor.shape[0]):  # 遍历 N 个关键点
+            keypoints_tensor = keypoints_tensor[:, :2]
+            for i in range(keypoints_tensor.shape[1]):  # 遍历 N 个关键点
                 keypoint_info.append({
                     "frame": 8,
                     "object_id": i,
