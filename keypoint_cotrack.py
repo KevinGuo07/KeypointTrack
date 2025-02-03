@@ -62,10 +62,10 @@ def main():
     task_path = args.base_dir
     tracked_keypoints = tracker.keypoint_track(dirs, project_path, task_path)
     image_files = sort_files_by_number(dirs["image"], "rgb_")
-
     for i, (keypoints, keypoint_info) in enumerate(tracked_keypoints):
         print(f"image time:{i}")
-        # print(keypoint_info) # i=0时的keypoint_info是所有帧所有点的信息
+        if i==1:
+            print(keypoint_info)
         image_path = os.path.join(dirs["image"], image_files[i])
         image = load_image(image_path)
         print(f"Processing image file: {os.path.basename(image_path)}")
