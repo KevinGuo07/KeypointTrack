@@ -151,8 +151,8 @@ def extract_tracked_keypoints(i, keypoints_batch, keypoint_info_batch, model_ste
     """
     tracked_keypoints = []
     batch_step = model_step * if_firstbatch
-    start_frame = i - model_step-batch_step
-    for j in range(start_frame, i-batch_step):
+    start_frame = i - model_step - batch_step
+    for j in range(start_frame, i - batch_step):
         # 提取当前帧 j 的所有信息
         frame_info = [info for info in keypoint_info_batch if info.get("frame") == j]
 
@@ -223,17 +223,16 @@ class KeypointTracker:
                                                                                                      mask,
                                                                                                      task_path)
                 queries = self._initialize_queries(keypoints)
-                tracked_keypoints.append((keypoints, keypoint_info))
 
             if i % self.model.step == 0 and i != 0:
-                tracked_keypoints = self.cotrack_keypoints(image, keypoints, i, queries, tracked_keypoints,
-                                                               window_frames, keypoint_info)
+                tracked_keypoints = self.cotrack_keypoints(image, keypoints, i, queries,
+                                                           tracked_keypoints, window_frames, keypoint_info)
             window_frames.append(image)
         # if index of the last frame is not the multiple of step:
         image = load_image(os.path.join(dirs["image"], image_files[-1]))
         last_batch_start = -(i % self.model.step) - self.model.step - 1
         tracked_keypoints = self.cotrack_keypoints(image, keypoints, i, queries, tracked_keypoints,
-                                                                      window_frames[last_batch_start:], keypoint_info)
+                                                   window_frames[last_batch_start:], keypoint_info)
         tracked_keypoints.pop(0)
         return tracked_keypoints
 
@@ -245,9 +244,20 @@ class KeypointTracker:
         if task_path:
             save_image(projected_img, os.path.join(task_path, "projected_keypoints.jpg"))
         print("keypoint of first input image is initialized!")
-        # print(candidate_pixels)
-        # print("shape of image is:", image.shape, "shape of points is:", points.shape, "shape of mask is:", mask.shape)
         return candidate_pixels, keypoint_info, real_keypoints, features_flat
+
+    def _initialize_queries(self, keypoint):
+        """
+        Args:
+            keypoint (np.ndarray): 初始关键点，形状为 (N, 2)。
+        Returns:
+            queries (torch.Tensor): 查询点张量，形状为 (1, N, 3)。
+        """
+        N = len(keypoint)
+        frame_indices = torch.zeros((N, 1), dtype=torch.float32)  # 每个点对应的帧索引，全为 0
+        keypoints_xy = torch.from_numpy(keypoint[:, ::-1].copy()).float()
+        queries = torch.cat([frame_indices, keypoints_xy], dim=1).unsqueeze(0)  # (1, N, 3)
+        return queries
 
     # 此时可以拿到的输入有：上一帧的参考点坐标和对应的特征信息，当前帧的rgb、点云、mask
     # 考虑加入的输入：
@@ -258,6 +268,7 @@ class KeypointTracker:
             keypoint (np.ndarray): 初始关键点，形状为 (N, 3)，包含 x, y, z。
             iteration (int): 当前迭代次数，1 表示初始化帧。
             queries: 查询点索引的坐标
+            tracked_keypoints: 已跟踪的关键点字典
             window_frames: 目前的窗口帧集合
             keypoint_info: 包含keypoint"frame" "object_id"  "pixel_coords"的字典
         Returns:
@@ -274,7 +285,6 @@ class KeypointTracker:
                 grid_query_frame=0,
             )
             window_frames.append(image)
-            keypoints_tensor = self._process_tracks(tracks, vis, keypoint, keypoint_info)
 
         else:
             tracks, vis = self._process_step(
@@ -285,36 +295,31 @@ class KeypointTracker:
             )
             # because the first "step" images are not recorded, add extra
             if iteration == self.model.step * 2:
-                print(f"Frame {iteration}: tracks shape：{tracks.shape} with first batch tracked")
+                # print(f"Frame {iteration}: tracks shape：{tracks.shape} with first batch tracked")
                 window_frames.append(image)
-                keypoints_tensor = self._process_tracks_firstbatch(tracks, vis, keypoint, keypoint_info)
-                new_tracked_keypoints = extract_tracked_keypoints(iteration, keypoints_tensor,
+                # deal with the first batch of 8 input frames
+                first_batch = self._process_tracks_firstbatch(tracks, vis, keypoint, keypoint_info)
+                new_tracked_keypoints = extract_tracked_keypoints(iteration, first_batch,
                                                                   keypoint_info, self.model.step, if_firstbatch=True)
+                tracked_keypoints.extend(new_tracked_keypoints)
+
+                # deal with the input frames indexed 9~16
+                keypoints_batch = self._process_tracks(tracks, vis, keypoint, keypoint_info)
+                new_tracked_keypoints = extract_tracked_keypoints(iteration, keypoints_batch,
+                                                                  keypoint_info, self.model.step, if_firstbatch=False)
                 tracked_keypoints.extend(new_tracked_keypoints)
                 return tracked_keypoints
 
-            print(f"Frame {iteration}: tracks shape：{tracks.shape}")
+            # print(f"Frame {iteration}: tracks shape：{tracks.shape}")
             window_frames.append(image)
-            keypoints_tensor = self._process_tracks(tracks, vis, keypoint, keypoint_info)
+            last_batch = self._process_tracks(tracks, vis, keypoint, keypoint_info)
 
-        new_tracked_keypoints = extract_tracked_keypoints(iteration, keypoints_tensor,
-                                                          keypoint_info, self.model.step, if_firstbatch=False)
-        tracked_keypoints.extend(new_tracked_keypoints)
+            new_tracked_keypoints = extract_tracked_keypoints(iteration, last_batch,
+                                                              keypoint_info, self.model.step, if_firstbatch=False)
+            tracked_keypoints.extend(new_tracked_keypoints)
         return tracked_keypoints
 
-    def _initialize_queries(self, keypoint):
-        """
-        Args:
-            keypoint (np.ndarray): 初始关键点，形状为 (N, 2)。
-        Returns:
-            queries (torch.Tensor): 查询点张量，形状为 (1, N, 3)。
-        """
-        N = len(keypoint)
-        frame_indices = torch.zeros((N, 1), dtype=torch.float32)  # 每个点对应的帧索引，全为 0
-        keypoints_xy = torch.from_numpy(keypoint[:, ::-1].copy()).float()
-        queries = torch.cat([frame_indices, keypoints_xy], dim=1).unsqueeze(0)  # (1, N, 3)
-        return queries
-
+    # to be done: 1. utilize vis   2. link object_id with mask_id
     def _process_tracks(self, tracks, vis, keypoint, keypoint_info):
         """
         处理 CoTracker 的跟踪结果，返回最近 8 帧的关键点坐标，并存储对应时间帧索引。
@@ -353,14 +358,13 @@ class KeypointTracker:
                 keypoints_tensor = torch.from_numpy(keypoint).float().to(self.device)
             else:
                 keypoints_tensor = keypoint.float().to(self.device)
-
-            keypoints_tensor = keypoints_tensor[:, :2]
-            for i in range(keypoints_tensor.shape[1]):  # 遍历 N 个关键点
+            print(keypoints_tensor.shape)
+            '''for i in range(keypoints_tensor.shape[0]):  # 遍历 N 个关键点
                 keypoint_info.append({
-                    "frame": 8,
+                    "frame": 1,
                     "object_id": i,
-                    "pixel_coords": (keypoints_tensor[i, 0].item(), keypoints_tensor[i, 1].item())
-                })
+                    "pixel_coords": (keypoints_tensor[i, 1].item(), keypoints_tensor[i, 0].item())
+                })'''
 
         keypoints_numpy = keypoints_tensor.cpu().numpy()  # (8, N, 3)
         return keypoints_numpy
@@ -374,7 +378,7 @@ class KeypointTracker:
             coords = coords.squeeze(0)  # (8, N, 2)
 
             keypoints_tensor = coords
-
+            # print(keypoints_tensor)
             for t_idx, t in enumerate(frame_indices):  # 遍历实际时间帧索引
                 for i in range(keypoints_tensor.shape[1]):  # 遍历 N 个关键点
                     keypoint_info.append({
