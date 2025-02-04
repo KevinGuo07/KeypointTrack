@@ -200,6 +200,14 @@ class KeypointTracker:
         )
 
     def keypoint_track(self, dirs, base_path, task_path):
+        """
+        Args:
+            dirs : 包含image,pointcloud,mask,output,info
+            base_path: 项目路径，一般为任务路径的前置
+            task_path： 具体任务路径，该路径下保存所有拿到的image depth等信息
+        Returns:
+            tracked_keypoints： 对输入任务路径中所有时间序的图片处理后的跟踪关键点信息字典
+        """
         image_files = sort_files_by_number(dirs["image"], prefix="rgb_")
         mask_files = sort_files_by_number(dirs["mask"], prefix="actor_seg_")
         obj_dicts_sorted = obj_dict_generate(dirs["info"], base_path)
