@@ -101,9 +101,13 @@ def main():
                     query=queries,
                     grid_query_frame=0,  # 检查是否可以不要
                 )
+                # print(pred_tracks.shape)
+                print(pred_tracks[0, pred_tracks.shape[1]-1, 0:1, :])
         window_frames.append(image)
 
-    print(tracked_keypoints.shape)
+    print(pred_tracks.shape)
+
+
 
 
 
