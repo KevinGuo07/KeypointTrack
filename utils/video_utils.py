@@ -3,7 +3,7 @@ import os
 from tqdm import tqdm
 
 
-def create_video_from_images(image_files, output_video_path, frame_rate=2):
+def create_video_from_images(image_files, output_video_path, frame_rate=5):
     # define valid extension
     if not image_files:
         raise ValueError("No valid image files found.")

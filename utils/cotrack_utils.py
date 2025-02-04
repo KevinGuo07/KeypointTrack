@@ -20,7 +20,7 @@ def sort_files_by_number(directory, prefix):
     files = [f for f in os.listdir(directory) if f.startswith(prefix)]
 
     def extract_number(filename):
-        match = re.search(fr'{prefix}(\d+)', filename)
+        match = re.search(fr"{prefix}(\d+)", filename)
         return int(match.group(1)) if match else float('inf')
 
     return sorted(files, key=extract_number)
@@ -210,6 +210,7 @@ class KeypointTracker:
 
         tracked_keypoints = []
         window_frames = []
+        keypoint_info = []
 
         for i, (img_file, point_file, mask_file) in enumerate(zip(image_files, point_files, mask_files)):
             image = load_image(os.path.join(dirs["image"], img_file))
@@ -219,14 +220,15 @@ class KeypointTracker:
             H, W, _ = image.shape
 
             if i == 0:
-                keypoints, keypoint_info, keypoints_points, features_flat = self.initialize_keypoint(image, points,
-                                                                                                     mask,
-                                                                                                     task_path)
+                keypoints, keypoints_points, features_flat = self.initialize_keypoint(image, points,
+                                                                                      mask,
+                                                                                      task_path)
                 queries = self._initialize_queries(keypoints)
 
             if i % self.model.step == 0 and i != 0:
                 tracked_keypoints = self.cotrack_keypoints(image, keypoints, i, queries,
-                                                           tracked_keypoints, window_frames, keypoint_info)
+                                                           tracked_keypoints, window_frames,
+                                                           keypoint_info)  # object_id = mask[y, x]获取对应掩码值
             window_frames.append(image)
         # if index of the last frame is not the multiple of step:
         image = load_image(os.path.join(dirs["image"], image_files[-1]))
@@ -234,17 +236,18 @@ class KeypointTracker:
         tracked_keypoints = self.cotrack_keypoints(image, keypoints, i, queries, tracked_keypoints,
                                                    window_frames[last_batch_start:], keypoint_info)
         tracked_keypoints.pop(0)
+        # print(tracked_keypoints)
         return tracked_keypoints
 
     def initialize_keypoint(self, image, points, mask, task_path=None):
         keypoints, projected_img, candidate_pixels, features_flat = self.keypoint_proposer.get_keypoints(image, points,
                                                                                                          mask)
-        real_keypoints, keypoint_info = self.keypoint_proposer.register_keypoints(keypoints, points, mask)
-
+        real_keypoints = self.keypoint_proposer.register_keypoints(keypoints, points, mask)
+        # print(keypoint_info)
         if task_path:
             save_image(projected_img, os.path.join(task_path, "projected_keypoints.jpg"))
         print("keypoint of first input image is initialized!")
-        return candidate_pixels, keypoint_info, real_keypoints, features_flat
+        return candidate_pixels, real_keypoints, features_flat
 
     def _initialize_queries(self, keypoint):
         """
@@ -338,11 +341,7 @@ class KeypointTracker:
             start_frame = max(0, T - 8)  # 计算起始帧索引，防止越界
             frame_indices = list(range(start_frame, T))  # T-8:T 的帧索引
 
-            # 提取最近 8 帧的 (N, 2) 关键点坐标
-            coords = tracks[:, -8:]  # (1, 8, N, 2)
-            coords = coords.squeeze(0)  # (8, N, 2)
-
-            keypoints_tensor = coords
+            keypoints_tensor = tracks[:, -8:].squeeze(0)  # (8, N, 2)
 
             for t_idx, t in enumerate(frame_indices):  # 遍历实际时间帧索引
                 for i in range(keypoints_tensor.shape[1]):  # 遍历 N 个关键点
@@ -359,12 +358,6 @@ class KeypointTracker:
             else:
                 keypoints_tensor = keypoint.float().to(self.device)
             print(keypoints_tensor.shape)
-            '''for i in range(keypoints_tensor.shape[0]):  # 遍历 N 个关键点
-                keypoint_info.append({
-                    "frame": 1,
-                    "object_id": i,
-                    "pixel_coords": (keypoints_tensor[i, 1].item(), keypoints_tensor[i, 0].item())
-                })'''
 
         keypoints_numpy = keypoints_tensor.cpu().numpy()  # (8, N, 3)
         return keypoints_numpy
@@ -374,10 +367,7 @@ class KeypointTracker:
             frame_indices = list(range(0, 8))  # T-8:T 的帧索引
 
             # 提取最近 8 帧的 (N, 2) 关键点坐标
-            coords = tracks[:, :8]  # (1, 8, N, 2)
-            coords = coords.squeeze(0)  # (8, N, 2)
-
-            keypoints_tensor = coords
+            keypoints_tensor = tracks[:, -8:].squeeze(0) # (8, N, 2)
             # print(keypoints_tensor)
             for t_idx, t in enumerate(frame_indices):  # 遍历实际时间帧索引
                 for i in range(keypoints_tensor.shape[1]):  # 遍历 N 个关键点
