@@ -62,6 +62,8 @@ def main():
     task_path = args.base_dir
     tracked_keypoints = tracker.keypoint_track(dirs, project_path, task_path)
     # print(keypoint_info)
+    # tracked_keypoints.pop(0)
+
     image_files = sort_files_by_number(dirs["image"], "rgb_")
     for i, (keypoints, keypoint_info) in enumerate(tracked_keypoints):
         print(f"image time:{i}")
@@ -69,7 +71,7 @@ def main():
         image = load_image(image_path)
         print(f"Processing image file: {os.path.basename(image_path)}")
         save_and_show_keypoints(image, keypoint_info, image_path, dirs["output"], i)
-
+    print(i)
     output_video_path = os.path.join(args.base_dir, "keypoint_cotrack.mp4")
     save_dir = sort_files_by_number(os.path.join(args.base_dir, "output"), "keypoints_")
     save_dir = [os.path.join(os.path.join(args.base_dir, "output"), filename) for filename in save_dir]
