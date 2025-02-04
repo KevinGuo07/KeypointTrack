@@ -226,7 +226,6 @@ class KeypointProposer:
                     - 对应像素坐标 (x, y)。
         """
         updated_keypoints = []  # 存储更新后的关键点
-        keypoint_info = []  # 存储关键点的附加信息
 
         H, W, _ = points.shape
 
@@ -253,13 +252,13 @@ class KeypointProposer:
                         object_id = mask[y, x]
 
             updated_keypoints.append(updated_position)
-            keypoint_info.append({
+            '''keypoint_info.append({
                 "frame": 0,
                 "object_id": object_id,
                 "pixel_coords": pixel_coords
-            })
+            })'''
 
-        return np.array(updated_keypoints), keypoint_info
+        return np.array(updated_keypoints)
 
     @torch.inference_mode()
     @torch.amp.autocast('cuda')

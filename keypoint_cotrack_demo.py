@@ -28,13 +28,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--checkpoint",
-        default=None,
+        default="C:/Users/11760/Desktop/dissertation/KeypointTrack/checkpoints/scaled_online.pth",  # path to your checkpoint path
         help="CoTracker model parameters",
     )
 
     parser.add_argument(
         "--base_dir",
-        default="C:/Users/11760/Desktop/dissertation/KeypointTrack/dual_shoes_place", # path to your file path
+        default="C:/Users/11760/Desktop/dissertation/KeypointTrack/dual_shoes_place",  # path to your file path
         help="Base directory for input and output data",
     )
 
@@ -65,7 +65,7 @@ def main():
     image_files = sort_files_by_number(dirs["image"], "rgb_")
     for i, (keypoints, keypoint_info) in enumerate(tracked_keypoints):
         print(f"image time:{i}")
-        image_path = os.path.join(dirs["image"], image_files[i+1])
+        image_path = os.path.join(dirs["image"], image_files[i])
         image = load_image(image_path)
         print(f"Processing image file: {os.path.basename(image_path)}")
         save_and_show_keypoints(image, keypoint_info, image_path, dirs["output"], i)
