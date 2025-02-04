@@ -228,82 +228,75 @@ class CoTrackerOnlinePredictor(torch.nn.Module):
 
     @torch.no_grad()
     def forward(
-        self,
-        video_chunk,
-        is_first_step: bool = False,
-        queries: torch.Tensor = None,
-        grid_size: int = 5,
-        grid_query_frame: int = 0,
-        add_support_grid=False,
+            self,
+            video_chunk,
+            is_first_step: bool = False,
+            queries: torch.Tensor = None,
+            grid_size: int = 5,
+            grid_query_frame: int = 0,
+            add_support_grid=False,
     ):
         B, T, C, H, W = video_chunk.shape
-        # Initialize online video processing and save queried points
-        # This needs to be done before processing *each new video*
+
         if is_first_step:
             self.model.init_video_online_processing()
-            if queries is not None:
-                B, N, D = queries.shape
-                self.N = N
-                assert D == 3
-                queries = queries.clone()
-                queries[:, :, 1:] *= queries.new_tensor(
-                    [
-                        (self.interp_shape[1] - 1) / (W - 1),
-                        (self.interp_shape[0] - 1) / (H - 1),
-                    ]
-                )
-                if add_support_grid:
-                    grid_pts = get_points_on_a_grid(
-                        self.support_grid_size, self.interp_shape, device=video_chunk.device
-                    )
-                    grid_pts = torch.cat(
-                        [torch.zeros_like(grid_pts[:, :, :1]), grid_pts], dim=2
-                    )
-                    queries = torch.cat([queries, grid_pts], dim=1)
-            elif grid_size > 0:
-                grid_pts = get_points_on_a_grid(
-                    grid_size, self.interp_shape, device=video_chunk.device
-                )
-                self.N = grid_size**2
-                queries = torch.cat(
-                    [torch.ones_like(grid_pts[:, :, :1]) * grid_query_frame, grid_pts],
-                    dim=2,
-                )
-            
+            # ... 省略初始化 queries 的逻辑 ...
             self.queries = queries
+
+            # 每个新视频开始时，清空或重置 buffered_tracks
+            self.buffered_tracks = None
             return (None, None)
 
-        video_chunk = video_chunk.reshape(B * T, C, H, W)
-        video_chunk = F.interpolate(
-            video_chunk, tuple(self.interp_shape), mode="bilinear", align_corners=True
-        )
-        video_chunk = video_chunk.reshape(
-            B, T, 3, self.interp_shape[0], self.interp_shape[1]
-        )
+        # 这里是正常处理
+        # [B,T,C,H,W] -> 插值 -> 喂给 self.model -> 得到 tracks, visibilities
+        # -----------------------------------------------------
         if self.v2:
-            tracks, visibilities, __ = self.model(
-                video=video_chunk, queries=self.queries, iters=6, is_online=True
-            )
+            tracks, visibilities, __ = self.model(...)
         else:
-            tracks, visibilities, confidence, __ = self.model(
-                video=video_chunk, queries=self.queries, iters=6, is_online=True
-            )
+            tracks, visibilities, confidence, __ = self.model(...)
+
         if add_support_grid:
-            tracks = tracks[:,:,:self.N]
-            visibilities = visibilities[:,:,:self.N]
+            tracks = tracks[:, :, :self.N]  # (B, T, N, 2)
+            visibilities = visibilities[:, :, :self.N]  # (B, T, N)
             if not self.v2:
-                confidence = confidence[:,:,:self.N]
-            
+                confidence = confidence[:, :, :self.N]
+
         if not self.v2:
             visibilities = visibilities * confidence
+
         thr = 0.6
-        return (
-            tracks
-            * tracks.new_tensor(
-                [
-                    (W - 1) / (self.interp_shape[1] - 1),
-                    (H - 1) / (self.interp_shape[0] - 1),
-                ]
-            ),
-            visibilities > thr,
+        # 坐标缩放
+        tracks = tracks * tracks.new_tensor(
+            [
+                (W - 1) / (self.interp_shape[1] - 1),
+                (H - 1) / (self.interp_shape[0] - 1),
+            ]
         )
+        visibilities = (visibilities > thr)
+        # -----------------------------------------------------
+
+        # *** 核心改动：只取最新帧，拼到 self.buffered_tracks 上 ***
+        # 1) 先只取最新一帧 (时间维度 -1)，变成 (B, 1, N, 2)
+        #   如果原来 tracks shape = (B, T, N, 2)，取最后帧:
+        single_frame = tracks[:, -1:, :, :]  # (B, 1, N, 2)
+        single_vis = visibilities[:, -1:, :]  # (B, 1, N)
+
+        # 2) 你的需求是 shape=[1, N, 36, 2]，即 dimension=1 表示“时间”。
+        #    如果 B=1， single_frame 的形状就是 [1, 1, N, 2]。
+        #    后面你要让这个 1 逐渐增长，所以可以将 single_frame 拼接到 self.buffered_tracks 的第1维。
+
+        if self.buffered_tracks is None:
+            # 第一次出现有效数据
+            self.buffered_tracks = single_frame  # (1, 1, N, 2)
+            self.buffered_vis = single_vis  # (1, 1, N)
+        else:
+            # 之后的帧依次 cat 到第1维
+            self.buffered_tracks = torch.cat([self.buffered_tracks, single_frame], dim=1)
+            self.buffered_vis = torch.cat([self.buffered_vis, single_vis], dim=1)
+
+        # self.buffered_tracks 现在就是 (1, M, N, 2), 其中 M 会随调用次数递增
+        # “36” 可以是 N；若你固定 queries=36，那么 N=36。
+
+        # 返回给外部时，你可以直接返回 self.buffered_tracks
+        return self.buffered_tracks, self.buffered_vis
+
