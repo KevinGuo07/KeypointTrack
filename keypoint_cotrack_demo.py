@@ -60,10 +60,7 @@ def main():
 
     project_path = os.path.dirname(args.base_dir)
     task_path = args.base_dir
-    # tracked_keypoints = tracker.cotrack(dirs, project_path, task_path)
-
-    print(tracked_keypoints.shape)
-    '''tracked_keypoints = tracker.keypoint_track(dirs, project_path, task_path)
+    tracked_keypoints = tracker.keypoint_track(dirs, project_path, task_path)
     # print(keypoint_info)
     # tracked_keypoints.pop(0)
 
@@ -78,7 +75,7 @@ def main():
     output_video_path = os.path.join(args.base_dir, "keypoint_cotrack.mp4")
     save_dir = sort_files_by_number(os.path.join(args.base_dir, "output"), "keypoints_")
     save_dir = [os.path.join(os.path.join(args.base_dir, "output"), filename) for filename in save_dir]
-    create_video_from_images(save_dir, output_video_path)'''
+    create_video_from_images(save_dir, output_video_path)
 
 
 if __name__ == "__main__":
