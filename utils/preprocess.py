@@ -2,7 +2,6 @@ import cv2
 import numpy as np
 import os
 
-
 def load_image(filepath):
     """
     Args:
@@ -72,3 +71,6 @@ def save_image(image, filepath):
     success = cv2.imwrite(filepath, image_bgr)
     if not success:
         print(f"保存图片失败：{filepath}")
+
+
+__all__ = ["load_image", "load_pointcloud", "load_mask", "save_image"]

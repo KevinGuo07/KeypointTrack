@@ -304,9 +304,11 @@ class CoTrackerOnlinePredictor(torch.nn.Module):
             ]
         )
         visibilities = (visibilities > thr)
+
+        # below is the process to deal with one-by-one track
         if tracks.shape[1] == self.step * 2:
-            self.track_buffer = tracks.clone()
-            self.vis_buffer = visibilities.clone()
+            self.track_buffer = tracks[:, -self.step:, :, :].clone()
+            self.vis_buffer = visibilities[:, -self.step:, :].clone()
             return self.track_buffer, self.vis_buffer
 
         if tracks.shape[1] > self.step * 2:
@@ -314,7 +316,6 @@ class CoTrackerOnlinePredictor(torch.nn.Module):
             single_vis = visibilities[:, -1:, :]  # (B, 1, N)
 
             if self.track_buffer is None:
-                # 如果还没初始化，就初始化一下；理论上不会到这里
                 self.track_buffer = tracks[:, :self.step * 2, :, :].clone()
                 self.vis_buffer = visibilities[:, :self.step * 2, :].clone()
 

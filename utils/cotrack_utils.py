@@ -101,6 +101,24 @@ def save_and_show_keypoints(image, keypoint_info, image_path, output_dir, index)
     print(f"Saved keypoints image to: {output_path}")
 
 
+def draw_points(image, points, output_dir, index):
+    import warnings
+    warnings.simplefilter("ignore", category=DeprecationWarning)
+    colors = plt.cm.get_cmap('tab10', 15)  # tab10 颜色映射
+    plt.figure(figsize=(8, 6))
+    plt.imshow(image)
+
+    for i, (x, y) in enumerate(points):
+        x, y = int(x), int(y)
+        plt.scatter(x, y, c=[colors(i)], s=50, edgecolors='white')
+
+    plt.axis('off')
+    output_path = os.path.join(output_dir, f"keypoints_{index}.jpg")
+    plt.savefig(output_path, bbox_inches='tight')
+    plt.close()
+    print(f"Image saved to {output_path}")
+
+
 def get_point_cloud(obs_dict, point_seq_dir):
     depth_image, info = obs_dict["depth_image"], obs_dict["info"]
     H, W = depth_image.shape
@@ -379,7 +397,7 @@ class KeypointTracker:
 
                 new_tracked_keypoints = extract_tracked_keypoints(iteration, last_batch,
                                                                   keypoint_info, self.model.step, if_firstbatch=False)
-                print("迭代次数：",iteration)
+                print("迭代次数：", iteration)
                 print(new_tracked_keypoints)
                 print()
                 tracked_keypoints.extend(new_tracked_keypoints)
@@ -445,3 +463,6 @@ class KeypointTracker:
             # print(keypoint_info)
         keypoints_numpy = keypoints_tensor.cpu().numpy()  # (8, N, 3)
         return keypoints_numpy
+
+
+__all__ = ["KeypointTracker", "obj_dict_generate", "generate_point_clouds", "sort_files_by_number", "draw_points"]

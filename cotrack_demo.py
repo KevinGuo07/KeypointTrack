@@ -1,27 +1,16 @@
 import argparse
 import os
 import re
-import numpy as np
 import torch
+import matplotlib.pyplot as plt
 
 from cotracker.predictor import CoTrackerOnlinePredictor
-from utils.cotrack_utils import KeypointTracker, obj_dict_generate, generate_point_clouds
-from utils.preprocess import load_image, load_pointcloud, load_mask, save_image
+from utils.cotrack_utils import *
+from utils.preprocess import *
 
 DEFAULT_DEVICE = (
     "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
 )
-
-
-def sort_files_by_number(directory, prefix):
-    files = [f for f in os.listdir(directory) if f.startswith(prefix)]
-
-    def extract_number(filename):
-        match = re.search(fr'{prefix}(\d+)', filename)
-        return int(match.group(1)) if match else float('inf')
-
-    return sorted(files, key=extract_number)
-
 
 def main():
     parser = argparse.ArgumentParser()
@@ -81,36 +70,47 @@ def main():
 
         if i == 0:
             keypoints, keypoints_points, features_flat = tracker.initialize_keypoint(image, points,
-                                                                                  mask,
-                                                                                  task_path)
-            queries = tracker._initialize_queries(keypoints)
-            queries = queries.to(tracker.device)
+                                                                                     mask,
+                                                                                     task_path)
+            keypoints_flipped = keypoints[:, [1, 0]]
+            draw_points(image, keypoints_flipped, dirs["output"], i)
+            queries = (tracker._initialize_queries(keypoints)).to(tracker.device)
+            # queries = queries.to(tracker.device)
+            # 第0帧重复8遍，以前置跟踪窗口
+            for i in range(model.step):
+                window_frames.append(image)
+            pred_tracks, pred_visibility = tracker._process_step(
+                window_frames,
+                is_first_step=is_first_step,
+                query=queries,
+                grid_query_frame=0,
+            )
+            is_first_step = False
+            window_frames.append(image)
         else:
-            if i == 8:
+            window_frames.append(image)
+            real_index = model.step - 1
+            if i == real_index:
                 pred_tracks, pred_visibility = tracker._process_step(
                     window_frames,
                     is_first_step=is_first_step,
                     query=queries,
                     grid_query_frame=0,  # 检查是否可以不要
                 )
-                is_first_step = False
-            if i > 16:
+                for j in range(1, model.step):
+                    selected_point = pred_tracks[:, j, :, :].squeeze(0).cpu().numpy()
+                    draw_points(image, selected_point, dirs["output"], j)
+
+            elif i > real_index:
                 pred_tracks, pred_visibility = tracker._process_step(
                     window_frames,
                     is_first_step=is_first_step,
                     query=queries,
                     grid_query_frame=0,  # 检查是否可以不要
                 )
-                # print(pred_tracks.shape)
-                print(pred_tracks[0, pred_tracks.shape[1]-1, 0:1, :])
-        window_frames.append(image)
-
-    print(pred_tracks.shape)
-
-
-
+                latest_point=pred_tracks[:, -1, :, :].squeeze(0).cpu().numpy()
+                draw_points(image, latest_point, dirs["output"], i)
 
 
 if __name__ == "__main__":
     main()
-
