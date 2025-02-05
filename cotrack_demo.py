@@ -1,8 +1,6 @@
 import argparse
 import os
-import re
 import torch
-import matplotlib.pyplot as plt
 
 from cotracker.predictor import CoTrackerOnlinePredictor
 from utils.cotrack_utils import *
@@ -16,8 +14,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--checkpoint",
-        default="C:/Users/11760/Desktop/dissertation/KeypointTrack/checkpoints/scaled_online.pth",
-        # path to your checkpoint path
+        default="C:/Users/11760/Desktop/dissertation/KeypointTrack/checkpoints/scaled_online.pth",   # checkpoint path
         help="CoTracker model parameters",
     )
 
@@ -95,7 +92,7 @@ def main():
                     window_frames,
                     is_first_step=is_first_step,
                     query=queries,
-                    grid_query_frame=0,  # 检查是否可以不要
+                    grid_query_frame=0,
                 )
                 for j in range(1, model.step):
                     selected_point = pred_tracks[:, j, :, :].squeeze(0).cpu().numpy()
@@ -106,7 +103,7 @@ def main():
                     window_frames,
                     is_first_step=is_first_step,
                     query=queries,
-                    grid_query_frame=0,  # 检查是否可以不要
+                    grid_query_frame=0,
                 )
                 latest_point=pred_tracks[:, -1, :, :].squeeze(0).cpu().numpy()
                 draw_points(image, latest_point, dirs["output"], i)
