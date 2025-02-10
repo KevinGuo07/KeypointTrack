@@ -1,8 +1,10 @@
 import argparse
 import os
 import torch
+import time
 
 from cotracker.predictor import CoTrackerOnlinePredictor
+from utils.video_utils import create_video_from_images
 from utils.cotrack_utils import *
 from utils.preprocess import *
 
@@ -20,7 +22,7 @@ def main():
 
     parser.add_argument(
         "--base_dir",
-        default="C:/Users/11760/Desktop/dissertation/KeypointTrack/dual_shoes_place",  # path to your file path
+        default="C:/Users/11760/Desktop/dissertation/KeypointTrack/block_pick_hard",  # path to your file path
         help="Base directory for input and output data",
     )
 
@@ -56,8 +58,10 @@ def main():
 
     tracked_keypoints = []
     window_frames = []
+    buffer_image=[]
     keypoint_info = []
     is_first_step = True
+    start_time=time.time()
     for i, (img_file, point_file, mask_file) in enumerate(zip(image_files, point_files, mask_files)):
         image = load_image(os.path.join(dirs["image"], img_file))
         points = load_pointcloud(os.path.join(dirs["pointcloud"], point_file))
@@ -66,9 +70,12 @@ def main():
         H, W, _ = image.shape
 
         if i == 0:
+            start_time1 = time.time()
             keypoints, keypoints_points, features_flat = tracker.initialize_keypoint(image, points,
                                                                                      mask,
                                                                                      task_path)
+            end_time1 = time.time()
+            print(f"initialize time is {end_time1 - start_time1} seconds")
             keypoints_flipped = keypoints[:, [1, 0]]
             draw_points(image, keypoints_flipped, dirs["output"], i)
             queries = (tracker._initialize_queries(keypoints)).to(tracker.device)
@@ -86,6 +93,8 @@ def main():
             window_frames.append(image)
         else:
             window_frames.append(image)
+            if i in range(1, model.step):
+                buffer_image.append(image)
             real_index = model.step - 1
             if i == real_index:
                 pred_tracks, pred_visibility = tracker._process_step(
@@ -96,7 +105,9 @@ def main():
                 )
                 for j in range(1, model.step):
                     selected_point = pred_tracks[:, j, :, :].squeeze(0).cpu().numpy()
-                    draw_points(image, selected_point, dirs["output"], j)
+                    selected_vis = pred_visibility[:, j, :].squeeze(0).cpu().numpy()
+
+                    draw_points(buffer_image[j-1], selected_point, dirs["output"], j)
 
             elif i > real_index:
                 pred_tracks, pred_visibility = tracker._process_step(
@@ -107,6 +118,12 @@ def main():
                 )
                 latest_point=pred_tracks[:, -1, :, :].squeeze(0).cpu().numpy()
                 draw_points(image, latest_point, dirs["output"], i)
+    end_time=time.time()
+    print(f"iteration time is {end_time-start_time} seconds")
+    output_video_path = os.path.join(args.base_dir, "keypoint_cotrack.mp4")
+    save_dir = sort_files_by_number(os.path.join(args.base_dir, "output"), "keypoints_")
+    save_dir = [os.path.join(os.path.join(args.base_dir, "output"), filename) for filename in save_dir]
+    create_video_from_images(save_dir, output_video_path)
 
 
 if __name__ == "__main__":

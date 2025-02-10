@@ -237,7 +237,7 @@ class CoTrackerOnlinePredictor(torch.nn.Module):
             add_support_grid=False,
     ):
         B, T, C, H, W = video_chunk.shape
-
+        import time
         if is_first_step:
             self.model.init_video_online_processing()
             if queries is not None:
@@ -283,8 +283,11 @@ class CoTrackerOnlinePredictor(torch.nn.Module):
         if self.v2:
             tracks, visibilities, __ = self.model(video=video_chunk, queries=self.queries, iters=6, is_online=True)
         else:
+            # start_time = time.time()
             tracks, visibilities, confidence, __ = self.model(video=video_chunk, queries=self.queries, iters=6,
                                                               is_online=True)
+            # end_time = time.time()
+            # print(f"iteration time is {end_time - start_time} seconds")
 
         if add_support_grid:
             tracks = tracks[:, :, :self.N]  # (B, T, N, 2)
@@ -296,7 +299,6 @@ class CoTrackerOnlinePredictor(torch.nn.Module):
             visibilities = visibilities * confidence
 
         thr = 0.6
-
         tracks = tracks * tracks.new_tensor(
             [
                 (W - 1) / (self.interp_shape[1] - 1),

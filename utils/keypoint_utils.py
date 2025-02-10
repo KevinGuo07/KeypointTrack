@@ -51,7 +51,7 @@ class KeypointProposer:
 
         # get features
         features_flat = self._get_features(transformed_rgb, shape_info)
-        # for each mask, cluster in feature space to get meaningful regions, and uske their centers as keypoint candidates
+        # for each mask, cluster in feature space to get meaningful regions, and use their centers as keypoint candidates
         candidate_keypoints, candidate_pixels, candidate_rigid_group_ids = self._cluster_features(points, features_flat,
                                                                                                   masks)
 

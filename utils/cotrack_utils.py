@@ -101,7 +101,7 @@ def save_and_show_keypoints(image, keypoint_info, image_path, output_dir, index)
     print(f"Saved keypoints image to: {output_path}")
 
 
-def draw_points(image, points, output_dir, index):
+def draw_points(image, points,  output_dir, index):
     import warnings
     warnings.simplefilter("ignore", category=DeprecationWarning)
     colors = plt.cm.get_cmap('tab10', 15)  # tab10 颜色映射
