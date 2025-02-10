@@ -331,7 +331,6 @@ class CoTrackerThreeOnline(CoTrackerThreeBase):
         # The rest are the coordinates of points we want to track
         dtype = video.dtype
         queried_frames = queries[:, :, 0].long()
-
         queried_coords = queries[..., 1:3]
         queried_coords = queried_coords / self.stride
 
@@ -358,7 +357,6 @@ class CoTrackerThreeOnline(CoTrackerThreeBase):
                 conf_predicted = F.pad(
                     self.online_conf_predicted, (0, 0, 0, pad), "constant"
                 )
-
         # We store our predictions here
         all_coords_predictions, all_vis_predictions, all_confidence_predictions = (
             [],
@@ -368,7 +366,6 @@ class CoTrackerThreeOnline(CoTrackerThreeBase):
 
         C_ = C
         H4, W4 = H // self.stride, W // self.stride
-
         # Compute convolutional features for the video or for the current chunk in case of online mode
         if (not is_train) and (T > fmaps_chunk_size):
             fmaps = []
@@ -392,7 +389,6 @@ class CoTrackerThreeOnline(CoTrackerThreeBase):
             B, -1, self.latent_dim, H // self.stride, W // self.stride
         )
         fmaps = fmaps.to(dtype)
-
         # We compute track features
         fmaps_pyramid = []
         track_feat_pyramid = []
@@ -452,7 +448,6 @@ class CoTrackerThreeOnline(CoTrackerThreeBase):
         num_windows = (T - S + step - 1) // step + 1
         # We process only the current video chunk in the online mode
         indices = [self.online_ind] if is_online else range(0, step * num_windows, step)
-
         for ind in indices:
             if ind > 0:
                 overlap = S - step
